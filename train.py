@@ -189,6 +189,8 @@ def main():
     logger.epoch_bar.start()
 
     for epoch in range(args.epochs):
+        if epoch==10:
+            print(111)
         logger.epoch_bar.update(epoch)
 
         # train for one epoch
@@ -246,7 +248,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
     end = time.time()
     logger.train_bar.update(0)
 
-    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv) in enumerate(train_loader):
+    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses) in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
         # measure data loading time
@@ -257,7 +259,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        poses,poses_inv = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -312,7 +315,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
 
     end = time.time()
     logger.valid_bar.update(0)
-    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv) in enumerate(val_loader):
+    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses) in enumerate(val_loader):
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
@@ -336,7 +339,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                         tensor2array(tgt_depth[0][0], max_value=10),
                                         epoch)
 
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        poses, poses_inv = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -442,6 +446,34 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
         poses_inv.append(pose_net(ref_img, tgt_img))
 
     return poses, poses_inv
+
+from scipy.spatial.transform import Rotation
+def compute_pose_from_gt(sample):
+    # sample: list of [B,4,4] tensor
+    rate = 100.0
+    
+    poses = []
+    poses_inv = []
+    for ref_poses in sample:
+        pose,pose_inv = [],[]
+        for ref_pose in ref_poses:
+            ref_pose = ref_pose.numpy()
+            ref_pose_inv = np.linalg.inv(ref_pose)
+            t,rot = ref_pose[:3,3]/rate, ref_pose[:3,:3]
+            euler = Rotation.from_matrix(rot).as_euler('xyz').astype(np.float32)
+            pose.append(np.concatenate((t,euler),0))
+            
+            t_inv,rot_inv = ref_pose_inv[:3,3]/rate, ref_pose_inv[:3,:3]
+            euler_inv = Rotation.from_matrix(rot_inv).as_euler('xyz').astype(np.float32)
+            pose_inv.append(np.concatenate((t_inv,euler_inv),0))
+
+        pose,pose_inv = torch.from_numpy(np.array(pose).astype(np.float32)),torch.from_numpy(np.array(pose_inv).astype(np.float32))
+        pose,pose_inv = pose.to(device), pose_inv.to(device)
+        poses.append(pose)
+        poses_inv.append(pose_inv)       
+    # poses,poses_inv = torch.from_numpy(np.array(poses).astype(np.float32)),torch.from_numpy(np.array(poses_inv).astype(np.float32))
+    # poses,poses_inv = poses.to(device), poses_inv.to(device)
+    return poses, poses_inv # [2,B,6]
 
 
 if __name__ == '__main__':

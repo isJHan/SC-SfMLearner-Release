@@ -52,6 +52,8 @@ class DepthDecoder(nn.Module):
 
         self.alpha = 10
         self.beta = 0.01
+        # self.alpha = 1
+        # self.beta = 0.02
 
         self.num_output_channels = num_output_channels
         self.use_skips = use_skips

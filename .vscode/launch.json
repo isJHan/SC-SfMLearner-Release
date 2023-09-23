@@ -1,0 +1,34 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
+            "name": "train.py",
+            "type": "python",
+            "request": "launch",
+            "program": "/root/SC-SfMLearner-Release/train.py",
+            "args": [
+                "/root/autodl-tmp/dataset4SC_Depth",
+                "--resnet-layers", "18",
+                "--num-scales", "1",
+                "-b1", "-s0.1", "-c0.5", "--epoch-size", "1000", "--sequence-length", "3",
+                "--with-ssim", "1",
+                "--with-mask", "1",
+                "--with-auto-mask", "1",
+                "--with-pretrain", "1",
+                "--log-output",
+                "--name", "resnet18_depth_256_scene1"
+            ]
+        }
+    ]
+}

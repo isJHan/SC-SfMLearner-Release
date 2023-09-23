@@ -1,0 +1,6 @@
+**.pyc
+checkpoints/**
+models/__pycache__/__init__.cpython-36.pyc
+models/__pycache__/DispResNet.cpython-36.pyc
+models/__pycache__/PoseResNet.cpython-36.pyc
+models/__pycache__/resnet_encoder.cpython-36.pyc

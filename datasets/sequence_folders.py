@@ -41,13 +41,16 @@ class SequenceFolder(data.Dataset):
         for scene in self.scenes:
             intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             imgs = sorted(scene.files('*.jpg'))
+            poses = np.load(scene/'Transforms.npy').astype(np.float32) # load pose
 
             if len(imgs) < sequence_length:
                 continue
             for i in range(demi_length * self.k, len(imgs)-demi_length * self.k):
-                sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': []}
+                sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': [], 'ref_poses': []}
+                pose_tgt,pose_tgt_inv = poses[i], np.linalg.inv(poses[i])
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
+                    sample['ref_poses'].append(np.linalg.inv(poses[i+j]) @ pose_tgt)
                 sequence_set.append(sample)
         random.shuffle(sequence_set)
         self.samples = sequence_set
@@ -62,7 +65,8 @@ class SequenceFolder(data.Dataset):
             ref_imgs = imgs[1:]
         else:
             intrinsics = np.copy(sample['intrinsics'])
-        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics)
+            
+        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics), sample['ref_poses']
 
     def __len__(self):
         return len(self.samples)
