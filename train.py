@@ -89,6 +89,8 @@ def main():
         for i in range(3):
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
     my_writers['depth_range'] = SummaryWriter(args.save_path/'mine_writer')
+    my_writers['rotation'] = SummaryWriter(args.save_path/'mine_writer')
+    my_writers['translation'] = SummaryWriter(args.save_path/'mine_writer')
     # Data loading code
     normalize = custom_transforms.Normalize(mean=[0.45, 0.45, 0.45],
                                             std=[0.225, 0.225, 0.225])
@@ -260,6 +262,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
     for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses) in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
+        # tgt_img = tgt_img[::,0:1,...]
+        # ref_imgs = [ref_img[::,0:1,...] for ref_img in ref_imgs]
         # measure data loading time
         data_time.update(time.time() - end)
         tgt_img = tgt_img.to(device)
@@ -268,8 +272,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        # poses,poses_inv = compute_pose_from_gt(ref_poses)
+        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        poses,poses_inv = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -289,6 +293,14 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
                                                   {'depth_max': tgt_depth[0].max().item(),
                                                    'depth_min': tgt_depth[0].min().item(),
                                                    'depth_mean': tgt_depth[0].mean().item()}, n_iter)
+            my_writers['rotation'].add_scalars('rotation',
+                                                  {'rx': poses[0][0][3].item(),
+                                                   'ry': poses[0][0][4].item(),
+                                                   'rz': poses[0][0][5].item()}, n_iter)
+            my_writers['translation'].add_scalars('translation',
+                                                  {'tx': poses[0][0][0].item(),
+                                                   'ty': poses[0][0][1].item(),
+                                                   'tz': poses[0][0][2].item()}, n_iter)
 
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)
@@ -330,6 +342,9 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
     end = time.time()
     logger.valid_bar.update(0)
     for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses) in enumerate(val_loader):
+        # tgt_img = tgt_img[::,0:1,...]
+        # ref_imgs = [ref_img[::,0:1,...] for ref_img in ref_imgs]
+        
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
@@ -353,15 +368,15 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                         tensor2array(tgt_depth[0][0], max_value=10),
                                         epoch)
             from inverse_warp import inverse_warp2, inverse_warp
-            poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-            # poses, poses_inv = compute_pose_from_gt(ref_poses)
+            # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+            poses, poses_inv = compute_pose_from_gt(ref_poses)
             ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_imgs[0], tgt_depth[0], ref_depth[0], poses[0], intrinsics, args.padding_mode)
             output_writers[i].add_image('warp image', tensor2array(ref_img_warped[0]),epoch)
             output_writers[i].add_image('warp image - ref_img', tensor2array(ref_img_warped[0]-ref_img[0]),epoch)
             
 
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        # poses, poses_inv = compute_pose_from_gt(ref_poses)
+        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        poses, poses_inv = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
