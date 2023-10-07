@@ -112,6 +112,11 @@ def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsi
         weight_mask = (1 - diff_depth)
         diff_img = diff_img * weight_mask
 
+    with_brightness_mask = True
+    if with_brightness_mask:
+        brightness_mask = tgt_img[::,0:1,...]<(0.85 * (1-0.45)/0.225 ) # NOTE 灰度
+        diff_img = diff_img * brightness_mask
+
     # compute all loss
     reconstruction_loss = mean_on_mask(diff_img, valid_mask)
     geometry_consistency_loss = mean_on_mask(diff_depth, valid_mask)

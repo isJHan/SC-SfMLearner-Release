@@ -66,6 +66,7 @@ n_iter = 0
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 torch.autograd.set_detect_anomaly(True)
 
+my_writers = {}
 
 def main():
     global best_error, n_iter, device
@@ -87,19 +88,22 @@ def main():
     if args.log_output:
         for i in range(3):
             output_writers.append(SummaryWriter(args.save_path/'valid'/str(i)))
-
+    my_writers['depth_range'] = SummaryWriter(args.save_path/'mine_writer')
     # Data loading code
     normalize = custom_transforms.Normalize(mean=[0.45, 0.45, 0.45],
                                             std=[0.225, 0.225, 0.225])
 
     train_transform = custom_transforms.Compose([
-        custom_transforms.RandomHorizontalFlip(),
-        custom_transforms.RandomScaleCrop(),
+        # custom_transforms.RandomHorizontalFlip(),
+        # custom_transforms.RandomScaleCrop(),
         custom_transforms.ArrayToTensor(),
         normalize
     ])
 
-    valid_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    valid_transform = custom_transforms.Compose([
+        custom_transforms.ArrayToTensor(), 
+        normalize
+    ])
 
     print("=> fetching scenes in '{}'".format(args.data))
     if args.folder_type == 'sequence':
@@ -189,8 +193,13 @@ def main():
     logger.epoch_bar.start()
 
     for epoch in range(args.epochs):
-        if epoch==10:
-            print(111)
+        
+        logger.reset_valid_bar()
+        if args.with_gt:
+            errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
+        else:
+            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, output_writers)
+
         logger.epoch_bar.update(epoch)
 
         # train for one epoch
@@ -259,8 +268,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        poses,poses_inv = compute_pose_from_gt(ref_poses)
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses,poses_inv = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -275,6 +284,11 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
             train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
             train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
             train_writer.add_scalar('total_loss', loss.item(), n_iter)
+            
+            my_writers['depth_range'].add_scalars('depth',
+                                                  {'depth_max': tgt_depth[0].max().item(),
+                                                   'depth_min': tgt_depth[0].min().item(),
+                                                   'depth_mean': tgt_depth[0].mean().item()}, n_iter)
 
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)
@@ -338,9 +352,16 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
             output_writers[i].add_image('val Depth Output',
                                         tensor2array(tgt_depth[0][0], max_value=10),
                                         epoch)
+            from inverse_warp import inverse_warp2, inverse_warp
+            poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+            # poses, poses_inv = compute_pose_from_gt(ref_poses)
+            ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_imgs[0], tgt_depth[0], ref_depth[0], poses[0], intrinsics, args.padding_mode)
+            output_writers[i].add_image('warp image', tensor2array(ref_img_warped[0]),epoch)
+            output_writers[i].add_image('warp image - ref_img', tensor2array(ref_img_warped[0]-ref_img[0]),epoch)
+            
 
-        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_from_gt(ref_poses)
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses, poses_inv = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -450,7 +471,7 @@ def compute_pose_with_inv(pose_net, tgt_img, ref_imgs):
 from scipy.spatial.transform import Rotation
 def compute_pose_from_gt(sample):
     # sample: list of [B,4,4] tensor
-    rate = 100.0
+    rate = 1.0
     
     poses = []
     poses_inv = []
@@ -473,6 +494,7 @@ def compute_pose_from_gt(sample):
         poses_inv.append(pose_inv)       
     # poses,poses_inv = torch.from_numpy(np.array(poses).astype(np.float32)),torch.from_numpy(np.array(poses_inv).astype(np.float32))
     # poses,poses_inv = poses.to(device), poses_inv.to(device)
+    # print(poses[0][0][:3])
     return poses, poses_inv # [2,B,6]
 
 
