@@ -99,12 +99,12 @@ def main():
         # custom_transforms.RandomHorizontalFlip(),
         # custom_transforms.RandomScaleCrop(),
         custom_transforms.ArrayToTensor(),
-        normalize
+        # normalize
     ])
 
     valid_transform = custom_transforms.Compose([
         custom_transforms.ArrayToTensor(), 
-        normalize
+        # normalize
     ])
 
     print("=> fetching scenes in '{}'".format(args.data))
@@ -115,7 +115,8 @@ def main():
             seed=args.seed,
             train=True,
             sequence_length=args.sequence_length,
-            dataset=args.dataset
+            dataset=args.dataset,
+            skip_frames=5
         )
     else:
         train_set = PairFolder(
@@ -141,7 +142,8 @@ def main():
             seed=args.seed,
             train=False,
             sequence_length=args.sequence_length,
-            dataset=args.dataset
+            dataset=args.dataset,
+            skip_frames=5
         )
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -272,8 +274,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        poses,poses_inv = compute_pose_from_gt(ref_poses)
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses,poses_inv = compute_pose_from_gt(ref_poses)
+        # poses_gt,poses_inv_gt = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -281,26 +284,23 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
 
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        w4 = 1
+        loss_4 = torch.tensor(0.0)
+        # loss_4 = compute_pose_loss(poses,poses_inv, poses_gt,poses_inv_gt)
+        
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4
 
         if log_losses:
-            train_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
-            train_writer.add_scalar('disparity_smoothness_loss', loss_2.item(), n_iter)
-            train_writer.add_scalar('geometry_consistency_loss', loss_3.item(), n_iter)
-            train_writer.add_scalar('total_loss', loss.item(), n_iter)
+            train_writer.add_scalar('loss/photometric_error', loss_1.item(), n_iter)
+            train_writer.add_scalar('loss/disparity_smoothness_loss', loss_2.item(), n_iter)
+            train_writer.add_scalar('loss/geometry_consistency_loss', loss_3.item(), n_iter)
+            train_writer.add_scalar('loss/pose_loss', loss_4.item(), n_iter)
+            train_writer.add_scalar('loss/total_loss', loss.item(), n_iter)
             
             my_writers['depth_range'].add_scalars('depth',
                                                   {'depth_max': tgt_depth[0].max().item(),
                                                    'depth_min': tgt_depth[0].min().item(),
                                                    'depth_mean': tgt_depth[0].mean().item()}, n_iter)
-            my_writers['rotation'].add_scalars('rotation',
-                                                  {'rx': poses[0][0][3].item(),
-                                                   'ry': poses[0][0][4].item(),
-                                                   'rz': poses[0][0][5].item()}, n_iter)
-            my_writers['translation'].add_scalars('translation',
-                                                  {'tx': poses[0][0][0].item(),
-                                                   'ty': poses[0][0][1].item(),
-                                                   'tz': poses[0][0][2].item()}, n_iter)
 
         # record loss and EPE
         losses.update(loss.item(), args.batch_size)
@@ -365,18 +365,29 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                         tensor2array(1/tgt_depth[0][0], max_value=None, colormap='magma'),
                                         epoch)
             output_writers[i].add_image('val Depth Output',
-                                        tensor2array(tgt_depth[0][0], max_value=10),
+                                        tensor2array(tgt_depth[0][0], max_value=50),
                                         epoch)
             from inverse_warp import inverse_warp2, inverse_warp
-            # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-            poses, poses_inv = compute_pose_from_gt(ref_poses)
+            poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+            # poses, poses_inv = compute_pose_from_gt(ref_poses)
+            # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
             ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_imgs[0], tgt_depth[0], ref_depth[0], poses[0], intrinsics, args.padding_mode)
             output_writers[i].add_image('warp image', tensor2array(ref_img_warped[0]),epoch)
             output_writers[i].add_image('warp image - ref_img', tensor2array(ref_img_warped[0]-ref_img[0]),epoch)
+
+            my_writers['rotation'].add_scalars('transform/rotation',
+                                                  {'rx': poses[0][0][3].item()*180/3.1415926,
+                                                   'ry': poses[0][0][4].item()*180/3.1415926,
+                                                   'rz': poses[0][0][5].item()*180/3.1415926}, n_iter)
+            my_writers['translation'].add_scalars('transform/translation',
+                                                  {'tx': poses[0][0][0].item(),
+                                                   'ty': poses[0][0][1].item(),
+                                                   'tz': poses[0][0][2].item()}, n_iter)
             
 
-        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_from_gt(ref_poses)
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses, poses_inv = compute_pose_from_gt(ref_poses)
+        # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -512,6 +523,12 @@ def compute_pose_from_gt(sample):
     # print(poses[0][0][:3])
     return poses, poses_inv # [2,B,6]
 
+def compute_pose_loss(poses,poses_inv, poses_gt,poses_inv_gt):
+    loss_4 = 0
+    for i in range(len(poses)):
+        loss_4 += (poses[i]-poses_gt[i]).norm(p=1)
+        # loss_4 += (poses_inv[i]-poses_inv_gt[i]).norm(p=1)
+    return loss_4
 
 if __name__ == '__main__':
     main()

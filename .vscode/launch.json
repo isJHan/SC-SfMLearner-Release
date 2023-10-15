@@ -29,7 +29,8 @@
                 "--log-output",
                 // "--name", "/root/autodl-tmp/SC_Depth_ckpts/resnet18_depth_256_scene1_V_debug",
                 "--name", "/root/autodl-tmp/SC_Depth_ckpts/debug",
-                "--padding-mode", "border"
+                "--padding-mode", "zeros",
+                "--lr", "1e-5"
             ]
         }
     ]

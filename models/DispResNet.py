@@ -50,10 +50,10 @@ class DepthDecoder(nn.Module):
     def __init__(self, num_ch_enc, scales=range(4), num_output_channels=1, use_skips=True):
         super(DepthDecoder, self).__init__()
 
-        self.alpha = 10
-        self.beta = 0.01
-        # self.alpha = 1
-        # self.beta = 0.02
+        # self.alpha = 10
+        # self.beta = 0.005
+        self.alpha = 1
+        self.beta = 0.02
 
         self.num_output_channels = num_output_channels
         self.use_skips = use_skips
