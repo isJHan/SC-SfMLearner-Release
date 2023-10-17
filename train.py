@@ -116,7 +116,7 @@ def main():
             train=True,
             sequence_length=args.sequence_length,
             dataset=args.dataset,
-            skip_frames=5
+            skip_frames=3
         )
     else:
         train_set = PairFolder(
@@ -143,7 +143,7 @@ def main():
             train=False,
             sequence_length=args.sequence_length,
             dataset=args.dataset,
-            skip_frames=5
+            skip_frames=3
         )
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -274,8 +274,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        # poses,poses_inv = compute_pose_from_gt(ref_poses)
+        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        poses,poses_inv = compute_pose_from_gt(ref_poses)
         # poses_gt,poses_inv_gt = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
@@ -368,8 +368,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                         tensor2array(tgt_depth[0][0], max_value=50),
                                         epoch)
             from inverse_warp import inverse_warp2, inverse_warp
-            poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-            # poses, poses_inv = compute_pose_from_gt(ref_poses)
+            # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+            poses, poses_inv = compute_pose_from_gt(ref_poses)
             # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
             ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_imgs[0], tgt_depth[0], ref_depth[0], poses[0], intrinsics, args.padding_mode)
             output_writers[i].add_image('warp image', tensor2array(ref_img_warped[0]),epoch)
@@ -385,8 +385,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                                    'tz': poses[0][0][2].item()}, n_iter)
             
 
-        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        # poses, poses_inv = compute_pose_from_gt(ref_poses)
+        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        poses, poses_inv = compute_pose_from_gt(ref_poses)
         # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
@@ -475,11 +475,13 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+    # tgt_depth = [1/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [1/disp for disp in disp_net(ref_img)]
+        # ref_depth = [1/disp for disp in disp_net(ref_img)]
+        ref_depth = [disp for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths

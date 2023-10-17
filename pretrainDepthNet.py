@@ -26,7 +26,7 @@ parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], def
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
-parser.add_argument('--epoch-size', default=0, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
+parser.add_argument('--epoch-size', default=10000, type=int, metavar='N', help='manual epoch size (will match dataset size if not set)')
 parser.add_argument('-b', '--batch-size', default=4, type=int, metavar='N', help='mini-batch size')
 parser.add_argument('--lr', '--learning-rate', default=1e-4, type=float, metavar='LR', help='initial learning rate')
 parser.add_argument('--momentum', default=0.9, type=float, metavar='M', help='momentum for sgd, alpha parameter for adam')
@@ -82,11 +82,10 @@ import torch
 def load_model():
     # create model
     print("=> creating model")
-    disp_net = models.DispResNet(resnet_layers, with_pretrain).to(device)
-    pose_net = models.PoseResNet(18, with_pretrain).to(device)
+    # disp_net = models.DispResNet(resnet_layers, with_pretrain).to(device)
+    disp_net = models.PTModel().to(device)
 
     disp_net = torch.nn.DataParallel(disp_net)
-    pose_net = torch.nn.DataParallel(pose_net)
     
     return disp_net
 
@@ -146,7 +145,7 @@ class SequenceFolder_withGTDepth(data.Dataset):
         sample = self.samples[index]
         tgt_img = load_as_float(sample['tgt'])
         depth = load_as_float(sample['depth'])
-        depth *= 200
+        # depth *= 200
         if self.transform is not None:
             tmp = self.transform(images=[tgt_img,depth]) # 随机flip
             if self.post_transform is not None:
@@ -169,7 +168,7 @@ class SequenceFolder_withGTDepth(data.Dataset):
 
 args.data = "/root/autodl-tmp/UCL"
 args.seed = 1
-args.batch_size = 4
+args.batch_size = 8
 args.lr = 1e-4
 
 from torchvision import transforms
@@ -183,13 +182,13 @@ transforms = iaa.Sequential([
     iaa.flip.Flipud(p=0.5)
 ])
 post_transform = iaa.Sequential([
-    iaa.Sometimes(
-        0.5,
-        iaa.GaussianBlur(sigma=(0, 0.5))
-    ),
-    # Strengthen or weaken the contrast in each image.
-    iaa.LinearContrast((0.75, 1.5)),
-    iaa.Multiply((0.8, 1.2), per_channel=0.2)
+    # iaa.Sometimes(
+    #     0.5,
+    #     iaa.GaussianBlur(sigma=(0, 0.5))
+    # ),
+    # # Strengthen or weaken the contrast in each image.
+    # iaa.LinearContrast((0.75, 1.5)),
+    # iaa.Multiply((0.8, 1.2), per_channel=0.2)
     
 ], random_order=True)
 
@@ -225,7 +224,7 @@ optimizer = torch.optim.Adam(optim_params,
 import datetime
 
 
-args.name = '/root/autodl-tmp/SC_Depth_ckpts/pretrainDepth'
+args.name = '/root/autodl-tmp/SC_Depth_ckpts/pretrainDepth_DenseDepth'
 
 timestamp = datetime.datetime.now().strftime("%m-%d-%H:%M")
 save_path = Path(args.name)
@@ -239,9 +238,15 @@ import csv
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 import torch.nn.functional as tnf
+from loss_functions import compute_ssim_loss
+import torch.nn as nn
 
+l1_criterion = nn.L1Loss()
 def compute_depth(disp_net, tgt_img):
     return [1/t for t in disp_net(tgt_img)]
+
+def compute_depth_densenet(disp_net,tgt_img):
+    return disp_net(tgt_img)
 
 def compute_loss(tgt_depths,gt):
     loss = 0
@@ -252,6 +257,15 @@ def compute_loss(tgt_depths,gt):
         loss += (tgt_depth-gt_depth).norm()
         factor /= 2
     return loss/4
+
+def compute_loss_densenet(tgt_depth,gt):
+    gt = gt[::,0:1,...]
+    tgt_depth = tnf.interpolate(tgt_depth,scale_factor=(2,2))
+    loss = 0
+    loss_l1 = l1_criterion(tgt_depth,gt)
+    loss_ssim = compute_ssim_loss(gt, tgt_depth)
+    loss += (loss_ssim+0.1*loss_l1)
+    return loss.mean()
 
 train_writer = SummaryWriter(args.save_path)
 my_writers = {}
@@ -268,7 +282,7 @@ def train(args, train_loader, disp_net,  optimizer, epoch_size, logger, train_wr
     disp_net.train()
 
     end = time.time()
-    # logger.train_bar.update(0)
+    logger.train_bar.update(0)
 
     for i, (tgt_img, depth) in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
@@ -281,9 +295,9 @@ def train(args, train_loader, disp_net,  optimizer, epoch_size, logger, train_wr
         depth = depth.to(device)
 
         # compute output
-        tgt_depths = compute_depth(disp_net, tgt_img)
+        tgt_depths = compute_depth_densenet(disp_net, tgt_img)
 
-        loss = compute_loss(tgt_depths,depth)
+        loss = compute_loss_densenet(tgt_depths,depth)
 
         tgt_depth = tgt_depths[0]
         if log_losses:
@@ -309,7 +323,7 @@ def train(args, train_loader, disp_net,  optimizer, epoch_size, logger, train_wr
         with open(args.save_path/args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             writer.writerow([loss.item()])
-        # logger.train_bar.update(i+1)
+        logger.train_bar.update(i+1)
         # if i % args.print_freq == 0:
         #     logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
         # if i >= epoch_size - 1:
@@ -386,7 +400,7 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
     disp_net.eval()
 
     end = time.time()
-    # logger.valid_bar.update(0)
+    logger.valid_bar.update(0)
     for i, (tgt_img, depth) in enumerate(val_loader):
         tgt_img = tgt_img.to(device)
         depth = depth.to(device)
@@ -402,9 +416,9 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
         if log_outputs and i < len(output_writers):
             if epoch == 0:
                 output_writers[i].add_image('val Input', tensor2array(tgt_img[0]), 0)
-                depth_to_show = depth[0]
+                depth_to_show = depth[0][0:1]
                 output_writers[i].add_image('val target Depth',
-                                            tensor2array(depth_to_show, max_value=None),
+                                            tensor2array(depth_to_show, max_value=1, colormap='magma'),
                                             epoch)
                 depth_to_show[depth_to_show == 0] = 1000
                 disp_to_show = (1/depth_to_show).clamp(0, 10)
@@ -413,7 +427,7 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
                                             epoch)
 
             output_writers[i].add_image('val Dispnet Output Normalized',
-                                        tensor2array(output_disp[0], max_value=None, colormap='magma'),
+                                        tensor2array(output_disp[0], max_value=1, colormap='magma'),
                                         epoch)
             output_writers[i].add_image('val Depth Output',
                                         tensor2array(output_depth[0], max_value=None),
@@ -422,10 +436,10 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-    #     logger.valid_bar.update(i+1)
+        logger.valid_bar.update(i+1)
     #     if i % args.print_freq == 0:
     #         logger.valid_writer.write('valid: Time {} Abs Error {:.4f} ({:.4f})'.format(batch_time, 1, 1))
-    # logger.valid_bar.update(len(val_loader))
+    logger.valid_bar.update(len(val_loader))
     return
 
 
@@ -447,9 +461,9 @@ def save_checkpoint(save_path, dispnet_state, is_best, filename='checkpoint.pth.
             shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
                             save_path/'{}_model_best.pth.tar'.format(prefix))
 
-
+print(len(train_loader),len(val_loader))
 logger = TermLogger(n_epochs=args.epochs, train_size=min(len(train_loader), args.epoch_size), valid_size=len(val_loader))
-# logger.epoch_bar.start()
+logger.epoch_bar.start()
 
 output_writers = []
 if args.log_output:
@@ -459,15 +473,16 @@ if args.log_output:
 for epoch in tqdm(range(args.epochs)):
     
     # logger.reset_valid_bar()
+    # validate_with_gt(args,val_loader,disp_net,epoch,logger,output_writers)
     
-    # logger.epoch_bar.update(epoch)
+    logger.epoch_bar.update(epoch)
     
-    # logger.reset_train_bar()
+    logger.reset_train_bar()
     train_loss = train(args, train_loader, disp_net,  optimizer, args.epoch_size, logger, train_writer)
     
     logger.train_writer.write(' * Avg Loss : {:.3f}'.format(train_loss))
     # evaluate on validation set
-    # logger.reset_valid_bar()
+    logger.reset_valid_bar()
     validate_with_gt(args,val_loader,disp_net,epoch,logger,output_writers)
     
     decisive_error = train_loss

@@ -9,6 +9,5 @@ python train.py $TRAIN_SET \
 --with-auto-mask 1 \
 --with-pretrain 1 \
 --log-output  \
---pretrained-disp  /root/autodl-tmp/SC_Depth_ckpts/pretrainDepth/10-13-03:47/dispnet_model_best.pth.tar \
---name /root/autodl-tmp/SC_Depth_ckpts/resnet18_depth_256_scene1_pretrainedDepthNet \
+--name /root/autodl-tmp/SC_Depth_ckpts/resnet18_depth_256_scene1_V_notInverse \
 --lr "1e-5"
