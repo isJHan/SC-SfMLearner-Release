@@ -92,19 +92,21 @@ def main():
     my_writers['rotation'] = SummaryWriter(args.save_path/'mine_writer')
     my_writers['translation'] = SummaryWriter(args.save_path/'mine_writer')
     # Data loading code
-    normalize = custom_transforms.Normalize(mean=[0.45, 0.45, 0.45],
-                                            std=[0.225, 0.225, 0.225])
+    # normalize = custom_transforms.Normalize(mean=[0.58, 0.58, 0.58],
+    #                                         std=[0.20, 0.20, 0.20])
+    normalize = custom_transforms.Normalize(mean=[0.58, 0.24, 0.20], # RGB
+                                            std=[0.20, 0.12, 0.11])
 
     train_transform = custom_transforms.Compose([
         # custom_transforms.RandomHorizontalFlip(),
         # custom_transforms.RandomScaleCrop(),
         custom_transforms.ArrayToTensor(),
-        # normalize
+        normalize
     ])
 
     valid_transform = custom_transforms.Compose([
         custom_transforms.ArrayToTensor(), 
-        # normalize
+        normalize
     ])
 
     print("=> fetching scenes in '{}'".format(args.data))
@@ -260,8 +262,11 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
 
     end = time.time()
     logger.train_bar.update(0)
+    
+    from utils import Gradient_Net
+    gradNet = Gradient_Net().to(device)
 
-    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses) in enumerate(train_loader):
+    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses, others) in enumerate(train_loader):
         log_losses = i > 0 and n_iter % args.print_freq == 0
 
         # tgt_img = tgt_img[::,0:1,...]
@@ -271,6 +276,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         tgt_img = tgt_img.to(device)
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
+        
+        tgt_disp = others['tgt_depth'].to(device)
+        ref_disps = [d.to(device) for d in others['ref_depths']]
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
@@ -288,13 +296,17 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         loss_4 = torch.tensor(0.0)
         # loss_4 = compute_pose_loss(poses,poses_inv, poses_gt,poses_inv_gt)
         
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4
+        w5 = 0
+        loss_5 = compute_depth_grad_loss(tgt_disp,(1/tgt_depth[0]-0.02)/10, gradNet)
+        
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4 + w5*loss_5
 
         if log_losses:
             train_writer.add_scalar('loss/photometric_error', loss_1.item(), n_iter)
             train_writer.add_scalar('loss/disparity_smoothness_loss', loss_2.item(), n_iter)
             train_writer.add_scalar('loss/geometry_consistency_loss', loss_3.item(), n_iter)
             train_writer.add_scalar('loss/pose_loss', loss_4.item(), n_iter)
+            train_writer.add_scalar('loss/disp_grad_loss', loss_5.item(), n_iter)
             train_writer.add_scalar('loss/total_loss', loss.item(), n_iter)
             
             my_writers['depth_range'].add_scalars('depth',
@@ -341,7 +353,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
 
     end = time.time()
     logger.valid_bar.update(0)
-    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses) in enumerate(val_loader):
+    for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv, ref_poses, others) in enumerate(val_loader):
         # tgt_img = tgt_img[::,0:1,...]
         # ref_imgs = [ref_img[::,0:1,...] for ref_img in ref_imgs]
         
@@ -351,10 +363,10 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
         intrinsics_inv = intrinsics_inv.to(device)
 
         # compute output
-        tgt_depth = [1 / disp_net(tgt_img)]
+        tgt_depth = [10 / disp_net(tgt_img)]
         ref_depths = []
         for ref_img in ref_imgs:
-            ref_depth = [1 / disp_net(ref_img)]
+            ref_depth = [10 / disp_net(ref_img)]
             ref_depths.append(ref_depth)
 
         if log_outputs and i < len(output_writers):
@@ -475,13 +487,13 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    # tgt_depth = [1/disp for disp in disp_net(tgt_img)]
-    tgt_depth = [disp for disp in disp_net(tgt_img)]
+    tgt_depth = [10/disp for disp in disp_net(tgt_img)]
+    # tgt_depth = [disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        # ref_depth = [1/disp for disp in disp_net(ref_img)]
-        ref_depth = [disp for disp in disp_net(ref_img)]
+        ref_depth = [10/disp for disp in disp_net(ref_img)]
+        # ref_depth = [disp for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
     return tgt_depth, ref_depths
@@ -531,6 +543,14 @@ def compute_pose_loss(poses,poses_inv, poses_gt,poses_inv_gt):
         loss_4 += (poses[i]-poses_gt[i]).norm(p=1)
         # loss_4 += (poses_inv[i]-poses_inv_gt[i]).norm(p=1)
     return loss_4
+
+def compute_depth_grad_loss(disp_dpt,disp_output, gradNet):
+    loss = 0.0
+    (gradX_dpt,gradY_dpt),(gradX_output,gradY_output) = gradNet(disp_dpt), gradNet(disp_output)
+    loss += (gradX_dpt-gradX_output).abs().mean()
+    loss += (gradY_dpt-gradY_output).abs().mean()
+    
+    return loss
 
 if __name__ == '__main__':
     main()

@@ -50,7 +50,9 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
 
     elif tensor.ndimension() == 3:
         assert(tensor.size(0) == 3)
-        array = 0.45 + tensor.numpy()*0.225
+        # array = 0.45 + tensor.numpy()*0.225
+        array = 0.58 + tensor.numpy()*0.2
+        # array = 0 + tensor.numpy()*1
     return array
 
 
@@ -84,6 +86,6 @@ class Gradient_Net(nn.Module):
   def forward(self, x):
     grad_x = F.conv2d(x, self.weight_x)
     grad_y = F.conv2d(x, self.weight_y)
-    gradient = torch.abs(grad_x) + torch.abs(grad_y)
-    return gradient
+    # gradient = torch.abs(grad_x) + torch.abs(grad_y)
+    return grad_x,grad_y
 

@@ -41,24 +41,31 @@ class SequenceFolder(data.Dataset):
         for scene in self.scenes:
             intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             imgs = sorted(scene.files('*.jpg'))
+            depths_gt = sorted((scene/'output_monodepth').listdir('*.png'))
             poses = np.load(scene/'Transforms.npy').astype(np.float32) if os.path.exists(scene/'Transforms.npy') else None  # load pose
 
             if len(imgs) < sequence_length:
                 continue
             for i in range(demi_length * self.k, len(imgs)-demi_length * self.k):
-                sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': [], 'ref_poses': []}
+                sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': [], 'ref_poses': [], 'others':{
+                    'tgt_depth':depths_gt[i],'ref_depths':[]
+                }}
                 if poses is not None: pose_tgt,pose_tgt_inv = poses[i], np.linalg.inv(poses[i])
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
+                    sample['others']['ref_depths'].append(depths_gt[i+j])
                     if poses is not None: sample['ref_poses'].append(np.linalg.inv(poses[i+j]) @ pose_tgt)
                 sequence_set.append(sample)
         random.shuffle(sequence_set)
         self.samples = sequence_set
 
     def __getitem__(self, index):
+        others = {}
         sample = self.samples[index]
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
+        others['tgt_depth'] = load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0
+        others['ref_depths'] = [load_as_float(t)[None,...]/65535.0 for t in sample['others']['ref_depths']]
         if self.transform is not None:
             imgs, intrinsics = self.transform([tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
             tgt_img = imgs[0]
@@ -66,7 +73,7 @@ class SequenceFolder(data.Dataset):
         else:
             intrinsics = np.copy(sample['intrinsics'])
             
-        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics), sample['ref_poses']
+        return tgt_img, ref_imgs, intrinsics, np.linalg.inv(intrinsics), sample['ref_poses'], others
 
     def __len__(self):
         return len(self.samples)
