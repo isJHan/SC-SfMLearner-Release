@@ -285,12 +285,16 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         poses,poses_inv = compute_pose_from_gt(ref_poses)
         # poses_gt,poses_inv_gt = compute_pose_from_gt(ref_poses)
+        oflows = compute_oflows(tgt_img,ref_imgs)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
                                                          args.with_mask, args.with_auto_mask, args.padding_mode)
 
         loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
+        
+        from loss_functions import compute_reprojection_loss
+        loss_reproj = compute_reprojection_loss(tgt_depth,oflows,poses,intrinsics)
 
         w4 = 1
         loss_4 = torch.tensor(0.0)
@@ -536,6 +540,15 @@ def compute_pose_from_gt(sample):
     # poses,poses_inv = poses.to(device), poses_inv.to(device)
     # print(poses[0][0][:3])
     return poses, poses_inv # [2,B,6]
+
+def compute_oflows(tgt_img,ref_imgs):
+    """compute optical flows from tgt_img to ref_imgs
+
+    Args:
+        tgt_img (_type_): _description_
+        ref_imgs (_type_): _description_
+    """
+    pass
 
 def compute_pose_loss(poses,poses_inv, poses_gt,poses_inv_gt):
     loss_4 = 0

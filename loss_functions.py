@@ -209,3 +209,30 @@ def compute_errors(gt, pred, dataset):
 
     return [metric.item() / batch_size for metric in [abs_diff, abs_rel, sq_rel, a1, a2, a3]]
 
+from inverse_warp import pixel2cam,pose_vec2mat,cam2pixel,set_id_grid
+def compute_reprojection_loss(tgt_depth,oflows,poses,intrinsics):
+    """compute mean reprojection loss from optical flow and depth
+
+    Args:
+        tgt_depth (shape is []): 
+        oflows (shape is ): optical-flows from tgt to source(ref)
+        poses (shape is ): target to source(ref)
+        intrinsics (shape is ): 
+    """
+    loss = 0
+    b,_,h,w = tgt_depth.shape
+    for pose,oflow in zip(poses,oflows):
+        cam_coords = pixel2cam(tgt_depth.squeeze(1), intrinsics.inverse())
+        pose_mat = pose_vec2mat(pose)  # [B,3,4]
+        
+        proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
+        
+        rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
+        pixel_coords_ref_depth = cam2pixel(cam_coords, rot, tr, 'zeros')  # [B,H,W,2]
+        
+        pixel_coors = set_id_grid(tgt_depth)[:,:2,...] # [1,2,H,W]
+        pixel_coors = pixel_coors[:, :, :h, :w].expand(b, 2, h, w).permute(0,2,3,1) # [B,H,W,2]
+        pixel_coors_ref_gt = pixel_coors + oflow
+        
+        loss += torch.norm((pixel_coords_ref_depth-pixel_coors_ref_gt),p=2,dim=-1).mean()
+    return loss/len(poses)

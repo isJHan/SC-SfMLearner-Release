@@ -15,6 +15,7 @@ def set_id_grid(depth):
     ones = torch.ones(1, h, w).type_as(depth)
 
     pixel_coords = torch.stack((j_range, i_range, ones), dim=1)  # [1, 3, H, W]
+    return pixel_coords
 
 
 def check_sizes(input, input_name, expected):
