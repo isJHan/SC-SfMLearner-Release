@@ -114,7 +114,8 @@ def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsi
 
     with_brightness_mask = True
     if with_brightness_mask:
-        brightness_mask = tgt_img[::,0:1,...]<(0.85 * (1-0.45)/0.225 ) # NOTE 灰度
+        # brightness_mask = tgt_img[::,0:1,...]<(0.85 * (1-0.45)/0.225 ) # NOTE 灰度
+        brightness_mask = (tgt_img[::,0:1,...]<0.85) & (tgt_img[::,0:1,...]>0.1) # NOTE 灰度
         diff_img = diff_img * brightness_mask
 
     # compute all loss

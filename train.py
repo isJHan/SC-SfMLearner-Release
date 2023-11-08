@@ -13,7 +13,8 @@ import torch.utils.data
 import models
 
 import custom_transforms
-from utils import tensor2array, save_checkpoint
+# from utils import tensor2array, save_checkpoint
+from utils import save_checkpoint
 from datasets.sequence_folders import SequenceFolder
 from datasets.pair_folders import PairFolder
 from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
@@ -92,21 +93,21 @@ def main():
     my_writers['rotation'] = SummaryWriter(args.save_path/'mine_writer')
     my_writers['translation'] = SummaryWriter(args.save_path/'mine_writer')
     # Data loading code
-    # normalize = custom_transforms.Normalize(mean=[0.58, 0.58, 0.58],
-    #                                         std=[0.20, 0.20, 0.20])
-    normalize = custom_transforms.Normalize(mean=[0.58, 0.24, 0.20], # RGB
-                                            std=[0.20, 0.12, 0.11])
+    normalize = custom_transforms.Normalize(mean=[0.58, 0.58, 0.58],
+                                            std=[0.20, 0.20, 0.20])
+    # normalize = custom_transforms.Normalize(mean=[0.58, 0.24, 0.20], # RGB
+    #                                         std=[0.20, 0.12, 0.11])
 
     train_transform = custom_transforms.Compose([
         # custom_transforms.RandomHorizontalFlip(),
         # custom_transforms.RandomScaleCrop(),
         custom_transforms.ArrayToTensor(),
-        normalize
+        # normalize
     ])
 
     valid_transform = custom_transforms.Compose([
         custom_transforms.ArrayToTensor(), 
-        normalize
+        # normalize
     ])
 
     print("=> fetching scenes in '{}'".format(args.data))
@@ -118,7 +119,7 @@ def main():
             train=True,
             sequence_length=args.sequence_length,
             dataset=args.dataset,
-            skip_frames=3
+            skip_frames=5
         )
     else:
         train_set = PairFolder(
@@ -145,7 +146,7 @@ def main():
             train=False,
             sequence_length=args.sequence_length,
             dataset=args.dataset,
-            skip_frames=3
+            skip_frames=5
         )
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -277,15 +278,15 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
         
-        tgt_disp = others['tgt_depth'].to(device)
-        ref_disps = [d.to(device) for d in others['ref_depths']]
+        # tgt_disp = others['tgt_depth'].to(device)
+        # ref_disps = [d.to(device) for d in others['ref_depths']]
 
         # compute output
         tgt_depth, ref_depths = compute_depth(disp_net, tgt_img, ref_imgs)
-        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        poses,poses_inv = compute_pose_from_gt(ref_poses)
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses,poses_inv = compute_pose_from_gt(ref_poses)
         # poses_gt,poses_inv_gt = compute_pose_from_gt(ref_poses)
-        oflows = compute_oflows(tgt_img,ref_imgs)
+        # oflows = compute_oflows(tgt_img,ref_imgs)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
                                                          poses, poses_inv, args.num_scales, args.with_ssim,
@@ -294,23 +295,24 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         loss_2 = compute_smooth_loss(tgt_depth, tgt_img, ref_depths, ref_imgs)
         
         from loss_functions import compute_reprojection_loss
-        loss_reproj = compute_reprojection_loss(tgt_depth,oflows,poses,intrinsics)
+        # loss_reproj = compute_reprojection_loss(tgt_depth,oflows,poses,intrinsics)
 
-        w4 = 1
-        loss_4 = torch.tensor(0.0)
+        # w4 = 1
+        # loss_4 = torch.tensor(0.0)
         # loss_4 = compute_pose_loss(poses,poses_inv, poses_gt,poses_inv_gt)
         
-        w5 = 0
-        loss_5 = compute_depth_grad_loss(tgt_disp,(1/tgt_depth[0]-0.02)/10, gradNet)
+        # w5 = 0
+        # loss_5 = compute_depth_grad_loss(tgt_disp,(1/tgt_depth[0]-0.02)/10, gradNet)
         
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4 + w5*loss_5
+        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4 + w5*loss_5
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
 
         if log_losses:
             train_writer.add_scalar('loss/photometric_error', loss_1.item(), n_iter)
             train_writer.add_scalar('loss/disparity_smoothness_loss', loss_2.item(), n_iter)
             train_writer.add_scalar('loss/geometry_consistency_loss', loss_3.item(), n_iter)
-            train_writer.add_scalar('loss/pose_loss', loss_4.item(), n_iter)
-            train_writer.add_scalar('loss/disp_grad_loss', loss_5.item(), n_iter)
+            # train_writer.add_scalar('loss/pose_loss', loss_4.item(), n_iter)
+            # train_writer.add_scalar('loss/disp_grad_loss', loss_5.item(), n_iter)
             train_writer.add_scalar('loss/total_loss', loss.item(), n_iter)
             
             my_writers['depth_range'].add_scalars('depth',
@@ -367,10 +369,10 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
         intrinsics_inv = intrinsics_inv.to(device)
 
         # compute output
-        tgt_depth = [10 / disp_net(tgt_img)]
+        tgt_depth = [1 / disp_net(tgt_img)]
         ref_depths = []
         for ref_img in ref_imgs:
-            ref_depth = [10 / disp_net(ref_img)]
+            ref_depth = [1 / disp_net(ref_img)]
             ref_depths.append(ref_depth)
 
         if log_outputs and i < len(output_writers):
@@ -384,12 +386,12 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                         tensor2array(tgt_depth[0][0], max_value=50),
                                         epoch)
             from inverse_warp import inverse_warp2, inverse_warp
-            # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-            poses, poses_inv = compute_pose_from_gt(ref_poses)
+            poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+            # poses, poses_inv = compute_pose_from_gt(ref_poses)
             # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
             ref_img_warped, valid_mask, projected_depth, computed_depth = inverse_warp2(ref_imgs[0], tgt_depth[0], ref_depth[0], poses[0], intrinsics, args.padding_mode)
             output_writers[i].add_image('warp image', tensor2array(ref_img_warped[0]),epoch)
-            output_writers[i].add_image('warp image - ref_img', tensor2array(ref_img_warped[0]-ref_img[0]),epoch)
+            output_writers[i].add_image('warp image - ref_img', abs(tensor2array(ref_img_warped[0]-ref_img[0])),epoch)
 
             my_writers['rotation'].add_scalars('transform/rotation',
                                                   {'rx': poses[0][0][3].item()*180/3.1415926,
@@ -401,8 +403,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                                    'tz': poses[0][0][2].item()}, n_iter)
             
 
-        # poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
-        poses, poses_inv = compute_pose_from_gt(ref_poses)
+        poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
+        # poses, poses_inv = compute_pose_from_gt(ref_poses)
         # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
 
         loss_1, loss_3 = compute_photo_and_geometry_loss(tgt_img, ref_imgs, intrinsics, tgt_depth, ref_depths,
@@ -491,12 +493,12 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers=[
 
 
 def compute_depth(disp_net, tgt_img, ref_imgs):
-    tgt_depth = [10/disp for disp in disp_net(tgt_img)]
+    tgt_depth = [1/disp for disp in disp_net(tgt_img)]
     # tgt_depth = [disp for disp in disp_net(tgt_img)]
 
     ref_depths = []
     for ref_img in ref_imgs:
-        ref_depth = [10/disp for disp in disp_net(ref_img)]
+        ref_depth = [1/disp for disp in disp_net(ref_img)]
         # ref_depth = [disp for disp in disp_net(ref_img)]
         ref_depths.append(ref_depth)
 
@@ -564,6 +566,62 @@ def compute_depth_grad_loss(disp_dpt,disp_output, gradNet):
     loss += (gradY_dpt-gradY_output).abs().mean()
     
     return loss
+
+
+
+from matplotlib import cm
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+
+
+def high_res_colormap(low_res_cmap, resolution=1000, max_value=1):
+    # Construct the list colormap, with interpolated values for higer resolution
+    # For a linear segmented colormap, you can just specify the number of point in
+    # cm.get_cmap(name, lutsize) with the parameter lutsize
+    x = np.linspace(0, 1, low_res_cmap.N)
+    low_res = low_res_cmap(x)
+    new_x = np.linspace(0, max_value, resolution)
+    high_res = np.stack([np.interp(new_x, x, low_res[:, i])
+                         for i in range(low_res.shape[1])], axis=1)
+    return ListedColormap(high_res)
+
+
+def opencv_rainbow(resolution=1000):
+    # Construct the opencv equivalent of Rainbow
+    opencv_rainbow_data = (
+        (0.000, (1.00, 0.00, 0.00)),
+        (0.400, (1.00, 1.00, 0.00)),
+        (0.600, (0.00, 1.00, 0.00)),
+        (0.800, (0.00, 0.00, 1.00)),
+        (1.000, (0.60, 0.00, 1.00))
+    )
+
+    return LinearSegmentedColormap.from_list('opencv_rainbow', opencv_rainbow_data, resolution)
+
+
+
+COLORMAPS = {'rainbow': opencv_rainbow(),
+             'magma': high_res_colormap(cm.get_cmap('magma')),
+             'bone': cm.get_cmap('bone', 10000)}
+
+
+def tensor2array(tensor, max_value=None, colormap='rainbow'):
+    tensor = tensor.detach().cpu()
+    if max_value is None:
+        max_value = tensor.max().item()
+    if tensor.ndimension() == 2 or tensor.size(0) == 1:
+        norm_array = tensor.squeeze().numpy()/max_value
+        array = COLORMAPS[colormap](norm_array).astype(np.float32)
+        array = array.transpose(2, 0, 1)
+
+    elif tensor.ndimension() == 3:
+        assert(tensor.size(0) == 3)
+        # array = 0.45 + tensor.numpy()*0.225
+        # array = 0.58 + tensor.numpy()*0.2
+        array = 0 + tensor.numpy()*1
+    return array
+
+
+
 
 if __name__ == '__main__':
     main()

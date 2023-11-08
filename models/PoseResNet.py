@@ -46,8 +46,8 @@ class PoseDecoder(nn.Module):
 
         out = out.mean(3).mean(2)
 
-        # pose = 0.01 * out.view(-1, 6) # NOTE 
-        pose = out.view(-1, 6) # NOTE 
+        pose = 0.01 * out.view(-1, 6) # NOTE 
+        # pose = out.view(-1, 6) # NOTE 
         # pose[...,:3] *= 500
         # pose[...,3:] *= 10
 
