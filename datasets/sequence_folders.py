@@ -4,7 +4,7 @@ from imageio import imread
 from path import Path
 import random
 import os
-
+import torch
 
 def load_as_float(path):
     return imread(path).astype(np.float32)
@@ -41,6 +41,7 @@ class SequenceFolder(data.Dataset):
         for scene in self.scenes:
             intrinsics = np.genfromtxt(scene/'cam.txt').astype(np.float32).reshape((3, 3))
             imgs = sorted(scene.files('*.jpg'))
+            # imgs = sorted(scene.files('*.png'))
             # depth
             if (scene/'output_monodepth').exists():
                 depths_gt = sorted((scene/'output_monodepth').listdir('*.png'))
@@ -48,24 +49,35 @@ class SequenceFolder(data.Dataset):
                 depths_gt = None
             # pose
             poses = np.load(scene/'Transforms.npy').astype(np.float32) if os.path.exists(scene/'Transforms.npy') else None  # load pose
+            
+            # oflow
+            if (scene/'depth_gt').exists():
+                depths_gtt = sorted((scene/'depth_gt').listdir('*.npy'))
+            else:
+                depths_gtt = None
+            
 
             if len(imgs) < sequence_length:
                 continue
             for i in range(demi_length * self.k, len(imgs)-demi_length * self.k):
                 sample = {'intrinsics': intrinsics, 'tgt': imgs[i], 'ref_imgs': [], 'ref_poses': [], 'others':{
-                    'tgt_depth':depths_gt[i] if depths_gt is not None else None,'ref_depths':[]
+                    'tgt_depth':depths_gt[i] if depths_gt is not None else None, 'ref_depths':[],
+                    'tgt_depth_gt':depths_gtt[i] if depths_gtt is not None else None, 'ref_depths_gt':[]
                 }}
+                
                 if poses is not None: pose_tgt,pose_tgt_inv = poses[i], np.linalg.inv(poses[i])
                 for j in shifts:
                     sample['ref_imgs'].append(imgs[i+j])
                     if depths_gt is not None: sample['others']['ref_depths'].append(depths_gt[i+j])
-                    if poses is not None: sample['ref_poses'].append(np.linalg.inv(poses[i+j]) @ pose_tgt)
+                    if depths_gtt is not None: sample['others']['ref_depths_gt'].append(depths_gtt[i+j])
+                    if poses is not None: sample['ref_poses'].append(np.linalg.inv(poses[i+j]) @ pose_tgt) # project points from tgt to refs
                 sequence_set.append(sample)
         random.shuffle(sequence_set)
         self.samples = sequence_set
 
     def __getitem__(self, index):
         others = {}
+        others['idx'] = index
         sample = self.samples[index]
         tgt_img = load_as_float(sample['tgt'])
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
@@ -73,6 +85,32 @@ class SequenceFolder(data.Dataset):
         if sample['others']['tgt_depth'] is not None:
             others['tgt_depth'] = load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0
             others['ref_depths'] = [load_as_float(t)[None,...]/65535.0 for t in sample['others']['ref_depths']]
+        if sample['others']['tgt_depth_gt'] is not None:            
+            # compute oflow
+            tgt_depth_gt = np.load(sample['others']['tgt_depth_gt'])[None,...].astype(np.float32)
+            ref_depths_gt = [np.load(t)[None,...].astype(np.float32) for t in sample['others']['ref_depths_gt']]
+
+            # 深度图是 [0,100]mm 因此归一化
+            others['tgt_depth_gt'] = tgt_depth_gt/100
+            others['ref_depths_gt'] = [t/100 for t in ref_depths_gt]
+            
+            _,h,w = tgt_depth_gt.shape
+            oflows = []
+            K, K_inv = sample['intrinsics'], np.linalg.inv(sample['intrinsics'])
+            for tgt2ref_pose,ref_depth in zip(sample['ref_poses'],ref_depths_gt):
+                u,v = np.meshgrid(np.linspace(0,w-1,w),np.linspace(0,h-1,h))
+                oflow = np.array([u,v])
+                p3d = np.array([u,v,np.ones_like(u)])
+                p3d = K_inv @ p3d.reshape((3,-1))
+                p3d = p3d * tgt_depth_gt.reshape((-1))
+                p3d = tgt2ref_pose[:3,:3]@p3d + tgt2ref_pose[:3,3:] # projection
+                p3d = p3d / p3d[-1]
+                p3d = K @ p3d
+                p3d = p3d.reshape((3,h,w))
+                p2d = p3d[:2]
+                oflow = p2d-oflow
+                oflows.append(torch.from_numpy(oflow.astype(np.float32)).permute((1,2,0)))
+            others['ref_oflows'] = oflows
         if self.transform is not None:
             imgs, intrinsics = self.transform([tgt_img] + ref_imgs, np.copy(sample['intrinsics']))
             tgt_img = imgs[0]

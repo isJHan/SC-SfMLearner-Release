@@ -1,5 +1,5 @@
 DATA_ROOT=/media/bjw/Disk
-TRAIN_SET=/home/jiahan/jiahan/datasets/C3VD/.dataset4SCDepth
+TRAIN_SET=/home/jiahan/jiahan/datasets/C3VD/dataset_cecum_t1_a_4SCDepth/scenes
 python -W ignore train.py $TRAIN_SET \
 --resnet-layers 18 \
 --num-scales 1 \
@@ -9,6 +9,5 @@ python -W ignore train.py $TRAIN_SET \
 --with-auto-mask 1 \
 --with-pretrain 1 \
 --log-output  \
---name /home/jiahan/jiahan/checkpoints/SC_Depth_on_C3VD/scenes_all_lossMidas \
---lr "1e-4" \
---epochs 70
+--name /home/jiahan/jiahan/checkpoints/SC_Depth_on_C3VD/scene1_lossMidas/hyper_1 \
+--lr "1e-4" 

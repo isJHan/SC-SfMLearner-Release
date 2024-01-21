@@ -112,7 +112,7 @@ def compute_pairwise_loss(tgt_img, ref_img, tgt_depth, ref_depth, pose, intrinsi
         weight_mask = (1 - diff_depth)
         diff_img = diff_img * weight_mask
 
-    with_brightness_mask = True
+    with_brightness_mask = False
     if with_brightness_mask:
         # brightness_mask = tgt_img[::,0:1,...]<(0.85 * (1-0.45)/0.225 ) # NOTE 灰度
         brightness_mask = (tgt_img[::,0:1,...]<0.85) & (tgt_img[::,0:1,...]>0.1) # NOTE 灰度
@@ -229,11 +229,14 @@ def compute_reprojection_loss(tgt_depth,oflows,poses,intrinsics):
         proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
         
         rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
-        pixel_coords_ref_depth = cam2pixel(cam_coords, rot, tr, 'zeros')  # [B,H,W,2]
+        pixel_coords_ref_depth = cam2pixel(cam_coords, rot, tr, 'zeros')  # [B,H,W,2] ref的像素坐标
         
-        pixel_coors = set_id_grid(tgt_depth)[:,:2,...] # [1,2,H,W]
+        pixel_coors = set_id_grid(tgt_depth.squeeze(1))[:,:2,...] # [1,2,H,W]
         pixel_coors = pixel_coors[:, :, :h, :w].expand(b, 2, h, w).permute(0,2,3,1) # [B,H,W,2]
         pixel_coors_ref_gt = pixel_coors + oflow
+        # # Normalized, -1 if on extreme left, 1 if on extreme right (x = w-1) [B, H*W] @ inverse_warp.py:line217
+        pixel_coors_ref_gt[...,0] = 2*pixel_coors_ref_gt[...,0]/(w-1) - 1 # u axis
+        pixel_coors_ref_gt[...,1] = 2*pixel_coors_ref_gt[...,1]/(h-1) - 1 # v axis
         
         loss += torch.norm((pixel_coords_ref_depth-pixel_coors_ref_gt),p=2,dim=-1).mean()
     return loss/len(poses)

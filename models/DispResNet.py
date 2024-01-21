@@ -54,6 +54,8 @@ class DepthDecoder(nn.Module):
         # self.beta = 0.005
         self.alpha = 10
         self.beta = 0.02
+        # self.alpha = 0.25
+        # self.beta = -0.125
         # self.alpha = 50
         # self.beta = 1
 
@@ -123,6 +125,10 @@ class DispResNet(nn.Module):
             return outputs
         else:
             return outputs[0]
+        # if self.training:
+        #     return outputs, features
+        # else:
+        #     return outputs[0], features
 
 
 if __name__ == "__main__":

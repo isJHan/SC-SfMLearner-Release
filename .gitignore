@@ -7,3 +7,17 @@ models/__pycache__/resnet_encoder.cpython-36.pyc
 
 nohup.out
 *.pyc
+
+# jiahan
+# tmp
+tmp/**
+
+#files
+*.npy
+*.png
+
+# vscode
+.vscode/*
+
+# checkpoints
+.ipynb_checkpoints/*
