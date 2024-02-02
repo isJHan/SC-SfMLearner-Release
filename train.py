@@ -16,7 +16,7 @@ import models
 import custom_transforms
 # from utils import tensor2array, save_checkpoint
 from utils import save_checkpoint
-from datasets.sequence_folders import SequenceFolder
+from datasets.sequence_folders import SequenceFolder, SimCol3D
 from datasets.pair_folders import PairFolder
 from loss_functions import compute_smooth_loss, compute_photo_and_geometry_loss, compute_errors
 from logger import TermLogger, AverageMeter
@@ -27,7 +27,7 @@ parser = argparse.ArgumentParser(description='Structure from Motion Learner trai
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
 parser.add_argument('data', metavar='DIR', help='path to dataset')
-parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair'], default='sequence', help='the dataset dype to train')
+parser.add_argument('--folder-type', type=str, choices=['sequence', 'pair', 'simcol'], default='sequence', help='the dataset dype to train')
 parser.add_argument('--sequence-length', type=int, metavar='N', help='sequence length for training', default=3)
 parser.add_argument('-j', '--workers', default=4, type=int, metavar='N', help='number of data loading workers')
 parser.add_argument('--epochs', default=200, type=int, metavar='N', help='number of total epochs to run')
@@ -137,7 +137,17 @@ def main():
             train=True,
             sequence_length=args.sequence_length,
             dataset=args.dataset,
-            skip_frames=5
+            skip_frames=1
+        )
+    elif args.folder_type == 'simcol':
+        train_set = SimCol3D(
+            args.data,
+            transform=train_transform,
+            seed=args.seed,
+            train=True,
+            sequence_length=args.sequence_length,
+            dataset=args.dataset,
+            skip_frames=1
         )
     else:
         train_set = PairFolder(
@@ -157,15 +167,26 @@ def main():
             dataset=args.dataset
         )
     else:
-        val_set = SequenceFolder(
-            args.data,
-            transform=valid_transform,
-            seed=args.seed,
-            train=False,
-            sequence_length=args.sequence_length,
-            dataset=args.dataset,
-            skip_frames=5
-        )
+        if args.folder_type == 'simcol':
+            val_set = SimCol3D(
+                args.data,
+                transform=valid_transform,
+                seed=args.seed,
+                train=False,
+                sequence_length=args.sequence_length,
+                dataset=args.dataset,
+                skip_frames=1
+            )
+        else:
+            val_set = SequenceFolder(
+                args.data,
+                transform=valid_transform,
+                seed=args.seed,
+                train=False,
+                sequence_length=args.sequence_length,
+                dataset=args.dataset,
+                skip_frames=1
+            )
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
     train_loader = torch.utils.data.DataLoader(
@@ -328,7 +349,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         # poses,poses_inv = compute_pose_from_gt(ref_poses)
-        poses_gt,poses_inv_gt = compute_pose_from_gt(ref_poses)
+        # poses_gt,poses_inv_gt = compute_pose_from_gt(ref_poses)
         # oflows = compute_oflows(tgt_img,ref_imgs)
 
         # # jh 给出旋转真值
@@ -502,7 +523,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
             from inverse_warp import inverse_warp2, inverse_warp
             poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
             # poses, poses_inv = compute_pose_from_gt(ref_poses)
-            poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
+            # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
 
             # jh 给出旋转真值
             # for ii in range(len(poses)):
@@ -542,17 +563,17 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                                                   {'rx': poses[0][0][3].item()*180/3.1415926,
                                                    'ry': poses[0][0][4].item()*180/3.1415926,
                                                    'rz': poses[0][0][5].item()*180/3.1415926,
-                                                   'rx_gt': poses_gt[0][0][3].item()*180/3.1415926,
-                                                   'ry_gt': poses_gt[0][0][4].item()*180/3.1415926,
-                                                   'rz_gt': poses_gt[0][0][5].item()*180/3.1415926,
+                                                #    'rx_gt': poses_gt[0][0][3].item()*180/3.1415926,
+                                                #    'ry_gt': poses_gt[0][0][4].item()*180/3.1415926,
+                                                #    'rz_gt': poses_gt[0][0][5].item()*180/3.1415926,
                                                    }, epoch)
             my_writers['translation'].add_scalars('transform/translation',
                                                   {'tx': poses[0][0][0].item(),
                                                    'ty': poses[0][0][1].item(),
                                                    'tz': poses[0][0][2].item(),
-                                                   'tx_gt': poses_gt[0][0][0].item()*ratio.squeeze()[0].item(),
-                                                   'ty_gt': poses_gt[0][0][1].item()*ratio.squeeze()[0].item(),
-                                                   'tz_gt': poses_gt[0][0][2].item()*ratio.squeeze()[0].item(),
+                                                #    'tx_gt': poses_gt[0][0][0].item()*ratio.squeeze()[0].item(),
+                                                #    'ty_gt': poses_gt[0][0][1].item()*ratio.squeeze()[0].item(),
+                                                #    'tz_gt': poses_gt[0][0][2].item()*ratio.squeeze()[0].item(),
                                                    }, epoch)
             if __alpha is not None: 
                 my_writers['alphab'].add_scalars('transform/alpha beta',
@@ -564,7 +585,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
 
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
         # poses, poses_inv = compute_pose_from_gt(ref_poses)
-        poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
+        # poses_gt, poses_inv_gt = compute_pose_from_gt(ref_poses)
 
         # jh 给出旋转真值
         # for ii in range(len(poses)):
