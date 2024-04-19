@@ -5,9 +5,59 @@ from path import Path
 import random
 import os
 import torch
+import re
 
 def load_as_float(path):
     return imread(path).astype(np.float32)
+
+
+def read_pfm(path):
+    """Read pfm file.
+
+    Args:
+        path (str): path to file
+
+    Returns:
+        tuple: (data, scale)
+    """
+    with open(path, "rb") as file:
+
+        color = None
+        width = None
+        height = None
+        scale = None
+        endian = None
+
+        header = file.readline().rstrip()
+        if header.decode("ascii") == "PF":
+            color = True
+        elif header.decode("ascii") == "Pf":
+            color = False
+        else:
+            raise Exception("Not a PFM file: " + path)
+
+        dim_match = re.match(r"^(\d+)\s(\d+)\s$", file.readline().decode("ascii"))
+        if dim_match:
+            width, height = list(map(int, dim_match.groups()))
+        else:
+            raise Exception("Malformed PFM header.")
+
+        scale = float(file.readline().decode("ascii").rstrip())
+        if scale < 0:
+            # little-endian
+            endian = "<"
+            scale = -scale
+        else:
+            # big-endian
+            endian = ">"
+
+        data = np.fromfile(file, endian + "f")
+        shape = (height, width, 3) if color else (height, width)
+
+        data = np.reshape(data, shape)
+        data = np.flipud(data)
+
+        return data, scale
 
 
 class SequenceFolder(data.Dataset):
@@ -30,6 +80,7 @@ class SequenceFolder(data.Dataset):
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
+        self.use_pfm = True
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -44,7 +95,8 @@ class SequenceFolder(data.Dataset):
             # imgs = sorted(scene.files('*.png'))
             # depth
             if (scene/'output_monodepth').exists():
-                depths_gt = sorted((scene/'output_monodepth').listdir('*.png'))
+                if not self.use_pfm: depths_gt = sorted((scene/'output_monodepth').listdir('*.png'))
+                else: depths_gt = sorted((scene/'output_monodepth').listdir('*.pfm')) # ! 不同之处在这里
             else:
                 depths_gt = None
             # pose
@@ -83,8 +135,10 @@ class SequenceFolder(data.Dataset):
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
         if sample['others']['tgt_depth'] is not None:
-            others['tgt_depth'] = load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0
-            others['ref_depths'] = [load_as_float(t)[None,...]/65535.0 for t in sample['others']['ref_depths']]
+            if self.use_pfm: others['tgt_depth'] = load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0
+            else: others['tgt_depth'],_ = read_pfm(sample['others']['tgt_depth'])[None,...] # ! 不同之处在这里
+            if self.use_pfm: others['ref_depths'] = [load_as_float(t)[None,...]/65535.0 for t in sample['others']['ref_depths']]
+            else: others['ref_depths'] = [read_pfm(sample['others']['tgt_depth'])[None,...] for t in sample['others']['ref_depths']]
         if sample['others']['tgt_depth_gt'] is not None:            
             # compute oflow
             tgt_depth_gt = np.load(sample['others']['tgt_depth_gt'])[None,...].astype(np.float32)

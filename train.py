@@ -137,7 +137,7 @@ def main():
             train=True,
             sequence_length=args.sequence_length,
             dataset=args.dataset,
-            skip_frames=1
+            skip_frames=3
         )
     elif args.folder_type == 'simcol':
         train_set = SimCol3D(
@@ -185,7 +185,7 @@ def main():
                 train=False,
                 sequence_length=args.sequence_length,
                 dataset=args.dataset,
-                skip_frames=1
+                skip_frames=3
             )
     print('{} samples found in {} train scenes'.format(len(train_set), len(train_set.scenes)))
     print('{} samples found in {} valid scenes'.format(len(val_set), len(val_set.scenes)))
@@ -253,11 +253,11 @@ def main():
 
     for epoch in range(args.epochs):
         
-        logger.reset_valid_bar()
-        if args.with_gt:
-            errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
-        else:
-            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, output_writers)
+        # logger.reset_valid_bar()
+        # if args.with_gt:
+        #     errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, output_writers)
+        # else:
+        #     errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, output_writers)
 
         logger.epoch_bar.update(epoch)
 
@@ -298,7 +298,7 @@ def main():
             distnet_state={
                 'epoch': epoch+1,
                 'state_dict': distNet.module.state_dict()
-            })
+            }, epoch=epoch)
 
         with open(args.save_path/args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
@@ -345,6 +345,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # NOTE load disp from gt
         tgt_depth_gt = others['tgt_depth_gt'].to(device)*100
         ref_depths_gt = [d.to(device)*100 for d in others['ref_depths_gt']]
+        # ! simcol
+        # tgt_depth_gt = others['tgt_depth_gt'].to(device)*200
+        # ref_depths_gt = [d.to(device)*200 for d in others['ref_depths_gt']]
         
         
         poses, poses_inv = compute_pose_with_inv(pose_net, tgt_img, ref_imgs)
@@ -379,8 +382,9 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # w5 = 0
         # loss_5 = compute_depth_grad_loss(tgt_disp,(1/tgt_depth[0]-0.02)/10, gradNet)
         
-        # w6 = 0.0
-        loss_6 = compute_midas_loss_pearson(tgt_depth,tgt_disp)
+        w6 = 1.0
+        loss_6 = compute_midas_loss_aux(tgt_depth, tgt_disp) # ! 对齐损失
+        # loss_6 = compute_midas_loss_pearson(tgt_depth,tgt_disp)
         # 计算ref和tgt
         # for ref_depth,ref_disp in zip(ref_depths, ref_disps):
         #     loss_6 += compute_midas_loss_pearson(ref_depth,ref_disp)
@@ -393,8 +397,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # loss_6_aux = compute_midas_loss_aux(tgt_depth,tgt_disp,tgt_img=tgt_img)
         
         # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4 + w5*loss_5
-        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w6*loss_6
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w6*loss_6
+        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 
         
         # jh 计算与真值的差，放缩预测深度到 [0,100]，并用平均值计算放缩系数保持尺度一致
         def meanOnB(tensor):
@@ -539,6 +543,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_net, epoch, logger, out
                 """[B,1,H,W]"""
                 return torch.mean(torch.mean(torch.mean(tensor,axis=-1,keepdim=True),axis=-2,keepdim=True),axis=-3,keepdim=True)
 
+            tgt_depth_gt = tgt_depth_gt*2 # ! SimCol3D
             ratio = meanOnB(tgt_depth[0]) / meanOnB(tgt_depth_gt) # NOTE 放缩平移量的尺度
             ratio_depth = meanOnB(tgt_depth_gt[0]) / meanOnB(tgt_depth[0][0]) # NOTE 只取 batch 是0的位置的计算
             depth_L1 = abs( tgt_depth_gt[0] - (tgt_depth[0][0]*ratio_depth) ).mean()
@@ -904,6 +909,41 @@ def compute_midas_loss_aux(tgt_depth,tgt_disp_midas, tgt_img=None):
     # for i in range(1): # 只监督最大尺度的
     for i in range(len(tgt_depth)):
         tgt_disp_reshaped = 1- F.interpolate(tgt_disp_midas,scale_factor=0.5**i)
+        if tgt_img is not None:
+            tgt_img_reshaped = F.interpolate(tgt_img,scale_factor=0.5**i)
+            brightness_mask = (tgt_img_reshaped[::,0:1,...]>0.85) | (tgt_img_reshaped[::,0:1,...]<0.1) # NOTE 灰度
+        else:
+            brightness_mask = torch.ones_like(tgt_disp_reshaped)
+                    
+        mean1,mean2 = tgt_depth[i].view((B,-1)).mean(axis=1),tgt_disp_reshaped.view((B,-1)).mean(axis=1)
+        ratio = mean1/mean2
+        ratio = ratio.view((B,1,1,1))
+        if i!=0: loss = loss + torch.norm(tgt_disp_reshaped*ratio - tgt_depth[i])
+        else: loss = loss + torch.norm( brightness_mask * (tgt_disp_reshaped*ratio - tgt_depth[i]) )
+    
+    return loss
+
+# 监督一部分区域
+def compute_midas_loss_aux2(tgt_depth,tgt_disp_midas, tgt_img=None):
+    """不同之处在于1/(output+88.8)转化
+
+    Args:
+        tgt_depth (_type_): _description_
+        tgt_disp_midas (_type_): _description_
+        tgt_img (_type_, optional): _description_. Defaults to None.
+
+    Returns:
+        _type_: _description_
+    """
+    loss = 0.0
+    B,_,h,w = tgt_depth[0].shape
+    
+    if tgt_img is not None: brightness_mask = (tgt_img[::,0:1,...]>0.85) | (tgt_img[::,0:1,...]<0.1) # NOTE 灰度
+    else: brightness_mask = torch.ones_like(tgt_depth[0])
+    
+    # for i in range(1): # 只监督最大尺度的
+    for i in range(len(tgt_depth)):
+        tgt_disp_reshaped = 1/(88.8+F.interpolate(tgt_disp_midas,scale_factor=0.5**i)) # ! 不同之处在这里
         if tgt_img is not None:
             tgt_img_reshaped = F.interpolate(tgt_img,scale_factor=0.5**i)
             brightness_mask = (tgt_img_reshaped[::,0:1,...]>0.85) | (tgt_img_reshaped[::,0:1,...]<0.1) # NOTE 灰度

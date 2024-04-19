@@ -21,3 +21,8 @@ tmp/**
 
 # checkpoints
 .ipynb_checkpoints/*
+
+mesure/*
+
+measure.txt
+measure_seg.txt

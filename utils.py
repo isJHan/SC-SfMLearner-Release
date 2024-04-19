@@ -56,21 +56,20 @@ def tensor2array(tensor, max_value=None, colormap='rainbow'):
     return array
 
 
-def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar',distnet_state=None):
+def save_checkpoint(save_path, dispnet_state, exp_pose_state, is_best, filename='checkpoint.pth.tar',distnet_state=None, epoch=None):
     file_prefixes = ['dispnet', 'exp_pose']
     states = [dispnet_state, exp_pose_state]
     for (prefix, state) in zip(file_prefixes, states):
-        torch.save(state, save_path/'{}_{}'.format(prefix, filename))
+        if epoch is not None and (epoch%5==0 or epoch<5): torch.save(state, save_path/'{}_{}_{}'.format(prefix, epoch, filename))
+        else: torch.save(state, save_path/'{}_{}'.format(prefix, filename))
     if distnet_state is not None:
         torch.save(state, save_path/'{}_{}'.format('distnet', filename))
 
     if is_best:
         for prefix in file_prefixes:
-            shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
-                            save_path/'{}_model_best.pth.tar'.format(prefix))
-        if distnet_state is not None:
-            shutil.copyfile(save_path/'{}_{}'.format('distnet', filename),
-                        save_path/'{}_model_best.pth.tar'.format('distnet'))
+            # shutil.copyfile(save_path/'{}_{}'.format(prefix, filename),
+            #                 save_path/'{}_model_best.pth.tar'.format(prefix))
+            torch.save(state, save_path/'{}_{}_{}'.format(prefix, 'best', filename))
 
 import torch
 import torch.nn as nn
