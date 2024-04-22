@@ -898,6 +898,9 @@ def compute_midas_loss(tgt_depth,tgt_disp_midas):
     
     return loss
 
+def min_max_norm(depth):
+    return [(d-d.min())/(d.max()-d.min()) for d in depth]
+
 # 监督一部分区域
 def compute_midas_loss_aux(tgt_depth,tgt_disp_midas, tgt_img=None):
     loss = 0.0
@@ -908,7 +911,8 @@ def compute_midas_loss_aux(tgt_depth,tgt_disp_midas, tgt_img=None):
     
     # for i in range(1): # 只监督最大尺度的
     for i in range(len(tgt_depth)):
-        tgt_disp_reshaped = 1- F.interpolate(tgt_disp_midas,scale_factor=0.5**i)
+        # tgt_disp_reshaped = 1- F.interpolate(tgt_disp_midas,scale_factor=0.5**i)
+        tgt_disp_reshaped = F.interpolate(tgt_disp_midas,scale_factor=0.5**i)
         if tgt_img is not None:
             tgt_img_reshaped = F.interpolate(tgt_img,scale_factor=0.5**i)
             brightness_mask = (tgt_img_reshaped[::,0:1,...]>0.85) | (tgt_img_reshaped[::,0:1,...]<0.1) # NOTE 灰度

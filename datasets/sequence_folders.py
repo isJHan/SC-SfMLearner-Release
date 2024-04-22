@@ -57,7 +57,7 @@ def read_pfm(path):
         data = np.reshape(data, shape)
         data = np.flipud(data)
 
-        return data, scale
+        return data
 
 
 class SequenceFolder(data.Dataset):
@@ -80,7 +80,7 @@ class SequenceFolder(data.Dataset):
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
-        self.use_pfm = True
+        self.use_pfm = True # ! for depth-anything
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -135,10 +135,10 @@ class SequenceFolder(data.Dataset):
         ref_imgs = [load_as_float(ref_img) for ref_img in sample['ref_imgs']]
 
         if sample['others']['tgt_depth'] is not None:
-            if self.use_pfm: others['tgt_depth'] = load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0
-            else: others['tgt_depth'],_ = read_pfm(sample['others']['tgt_depth'])[None,...] # ! 不同之处在这里
-            if self.use_pfm: others['ref_depths'] = [load_as_float(t)[None,...]/65535.0 for t in sample['others']['ref_depths']]
-            else: others['ref_depths'] = [read_pfm(sample['others']['tgt_depth'])[None,...] for t in sample['others']['ref_depths']]
+            if not self.use_pfm: others['tgt_depth'] = load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0
+            else: others['tgt_depth'] = 1/(read_pfm(sample['others']['tgt_depth'])[None,...]+22.2) # ! 不同之处在这里
+            if not self.use_pfm: others['ref_depths'] = [load_as_float(t)[None,...]/65535.0 for t in sample['others']['ref_depths']]
+            else: others['ref_depths'] = [1/(read_pfm(sample['others']['tgt_depth'])[None,...]+22.2) for t in sample['others']['ref_depths']]
         if sample['others']['tgt_depth_gt'] is not None:            
             # compute oflow
             tgt_depth_gt = np.load(sample['others']['tgt_depth_gt'])[None,...].astype(np.float32)
