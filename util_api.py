@@ -92,7 +92,7 @@ def run_model(pose_net,disp_net,tgt_img,ref_imgs):
     return pose,tgt_depth,ref_depths
 
 
-def infer(poseNetPath,dispNetPath, tgt_img_path,ref_imgs_paths):
+def infer2(poseNetPath,dispNetPath, tgt_img_path,ref_imgs_paths):
     disp_net,pose_net = load_model(poseNetPath,dispNetPath)
     tgt_img,ref_imgs = load_data(tgt_img_path,ref_imgs_paths)
     
@@ -131,7 +131,7 @@ def infer_model(model, filename, resize_shape=None):
     tgt_img_tmp = cv2.imread(tgt_img_path).astype(np.float32)
     h,w,_ = tgt_img_tmp.shape
     
-    if resize_shape is None: tgt_img_tmp = cv2.resize(tgt_img_tmp, (512,512))
+    if resize_shape is None: tgt_img_tmp = tgt_img_tmp
     else: tgt_img_tmp = cv2.resize(tgt_img_tmp, resize_shape)
     # print(tgt_img_tmp.shape)
 
