@@ -174,3 +174,12 @@ def unproj(K,depth,img):
     coor_camera[2,...] *= depth
     
     return coor_camera
+
+def read_txt(filename):
+    ret = []
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+    for line in lines:
+        line = line[:-1]
+        ret.append(line)
+    return ret
