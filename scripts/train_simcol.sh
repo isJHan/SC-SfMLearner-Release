@@ -9,7 +9,7 @@ python -W ignore train.py $TRAIN_SET \
 --with-auto-mask 1 \
 --with-pretrain 1 \
 --log-output  \
---name /home/jiahan/jiahan/checkpoints/SC_Depth_on_SimCol3D/scenes_all_SimCol3D \
+--name /home/jiahan/jiahan/checkpoints/SC_Depth_on_SimCol3D/depth-anyting_scenes_all_SimCol3D \
 --lr "5e-5" \
 --epochs 50 \
 --folder-type simcol
