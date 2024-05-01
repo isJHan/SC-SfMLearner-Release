@@ -190,6 +190,7 @@ class SimCol3D(data.Dataset):
     """
 
     def __init__(self, root, seed=None, train=True, sequence_length=3, transform=None, skip_frames=1, dataset='kitti'):
+        self.use_pfm = True
         np.random.seed(seed)
         random.seed(seed)
         self.root = Path(root)
@@ -212,7 +213,8 @@ class SimCol3D(data.Dataset):
             imgs = sorted(scene.files('F*.png')) # ! SimCol3D
             # depth
             if (scene/'output_monodepth').exists():
-                depths_gt = sorted((scene/'output_monodepth').listdir('*.png'))
+                if self.use_pfm: depths_gt = sorted((scene/'output_monodepth').listdir('*.pfm'))
+                else: depths_gt = sorted((scene/'output_monodepth').listdir('*.png'))
             else:
                 depths_gt = None
             # pose
@@ -251,8 +253,12 @@ class SimCol3D(data.Dataset):
         ref_imgs = [load_as_float(ref_img)[...,:-1][:448,:448] for ref_img in sample['ref_imgs']] # ! 裁切图片
 
         if sample['others']['tgt_depth'] is not None:
-            others['tgt_depth'] = (load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0)[:,:448,:448] # ! 裁切 Midas值
-            others['ref_depths'] = [(load_as_float(t)[None,...]/65535.0)[:,:448,:448] for t in sample['others']['ref_depths']] # ! 裁切 Midas值
+            if self.use_pfm: 
+                others['tgt_depth'] = (1/(read_pfm(sample['others']['tgt_depth'])[None,...]+22.2))[:,:448,:448] # ! 不同之处在这里
+                others['ref_depths'] = [(1/(read_pfm(sample['others']['tgt_depth'])[None,...]+22.2))[:,:448,:448] for t in sample['others']['ref_depths']]
+            else: 
+                others['tgt_depth'] = (load_as_float(sample['others']['tgt_depth'])[None,...]/65535.0)[:,:448,:448] # ! 裁切 Midas值
+                others['ref_depths'] = [(load_as_float(t)[None,...]/65535.0)[:,:448,:448] for t in sample['others']['ref_depths']] # ! 裁切 Midas值
             
         if sample['others']['tgt_depth_gt'] is not None:            
             # compute oflow
