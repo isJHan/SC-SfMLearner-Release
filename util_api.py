@@ -7,7 +7,7 @@ with_pretrain = True
 import models
 import torch
 import cv2
-
+from imageio import imread
 
 def load_model(poseNetPath,dispNetPath):
     # create model
@@ -106,7 +106,8 @@ def infer(model_path, filename):
     disp_net = load_dispNet(model_path)
     
     tgt_img_path = filename
-    tgt_img_tmp = cv2.imread(tgt_img_path).astype(np.float32)
+    # tgt_img_tmp = cv2.imread(tgt_img_path).astype(np.float32)
+    tgt_img_tmp = load_as_float(tgt_img_path).astype(np.float32)[:,:,:3]
     h,w,_ = tgt_img_tmp.shape
     
     tgt_img_tmp = cv2.resize(tgt_img_tmp, (512,512))
@@ -128,7 +129,8 @@ def infer_model(model, filename, resize_shape=None):
     disp_net = model
     
     tgt_img_path = filename
-    tgt_img_tmp = cv2.imread(tgt_img_path).astype(np.float32)
+    # tgt_img_tmp = cv2.imread(tgt_img_path).astype(np.float32)
+    tgt_img_tmp = load_as_float(tgt_img_path).astype(np.float32)[:,:,:3]
     h,w,_ = tgt_img_tmp.shape
     
     if resize_shape is None: tgt_img_tmp = tgt_img_tmp
@@ -183,3 +185,6 @@ def read_txt(filename):
         line = line[:-1]
         ret.append(line)
     return ret
+
+def load_as_float(path):
+    return imread(path).astype(np.float32)
