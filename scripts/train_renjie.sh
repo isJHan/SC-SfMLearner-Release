@@ -1,5 +1,5 @@
 DATA_ROOT=/media/bjw/Disk
-TRAIN_SET=/home/jiahan/Desktop/renjie_dataset
+TRAIN_SET=/Disk_2/Jiahan/renjie_dataset
 python -W ignore train.py $TRAIN_SET \
 --resnet-layers 18 \
 --num-scales 1 \
@@ -9,6 +9,6 @@ python -W ignore train.py $TRAIN_SET \
 --with-auto-mask 1 \
 --with-pretrain 1 \
 --log-output  \
---name /home/jiahan/Desktop/renjie_dataset/checkpoints/first_time/ \
+--name /Disk_2/Jiahan/renjie_dataset/checkpoints/first_time/ \
 --lr "1e-4" \
 --epochs 50
