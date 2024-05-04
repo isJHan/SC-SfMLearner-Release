@@ -382,8 +382,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # w5 = 0
         # loss_5 = compute_depth_grad_loss(tgt_disp,(1/tgt_depth[0]-0.02)/10, gradNet)
         
-        w6 = 1.0
-        loss_6 = compute_midas_loss_aux(tgt_depth, tgt_disp) # ! 对齐损失
+        # w6 = 1.0
+        # loss_6 = compute_midas_loss_aux(tgt_depth, tgt_disp) # ! 对齐损失
         # loss_6 = compute_midas_loss_pearson(tgt_depth,tgt_disp)
         # 计算ref和tgt
         # for ref_depth,ref_disp in zip(ref_depths, ref_disps):
@@ -397,8 +397,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # loss_6_aux = compute_midas_loss_aux(tgt_depth,tgt_disp,tgt_img=tgt_img)
         
         # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w4*loss_4 + w5*loss_5
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w6*loss_6
-        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 
+        # loss = w1*loss_1 + w2*loss_2 + w3*loss_3 + w6*loss_6
+        loss = w1*loss_1 + w2*loss_2 + w3*loss_3 
         
         # jh 计算与真值的差，放缩预测深度到 [0,100]，并用平均值计算放缩系数保持尺度一致
         def meanOnB(tensor):

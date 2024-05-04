@@ -80,7 +80,7 @@ class SequenceFolder(data.Dataset):
         self.transform = transform
         self.dataset = dataset
         self.k = skip_frames
-        self.use_pfm = True # ! for depth-anything
+        self.use_pfm = False # ! for depth-anything
         self.crawl_folders(sequence_length)
 
     def crawl_folders(self, sequence_length):
@@ -148,6 +148,7 @@ class SequenceFolder(data.Dataset):
             others['tgt_depth_gt'] = tgt_depth_gt/100
             others['ref_depths_gt'] = [t/100 for t in ref_depths_gt]
             
+            tgt_depth_gt = tgt_depth_gt[:,:,:,0]
             _,h,w = tgt_depth_gt.shape
             oflows = []
             K, K_inv = sample['intrinsics'], np.linalg.inv(sample['intrinsics'])
