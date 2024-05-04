@@ -141,8 +141,8 @@ class SequenceFolder(data.Dataset):
             else: others['ref_depths'] = [1/(read_pfm(sample['others']['tgt_depth'])[None,...]+22.2) for t in sample['others']['ref_depths']]
         if sample['others']['tgt_depth_gt'] is not None:            
             # compute oflow
-            tgt_depth_gt = np.load(sample['others']['tgt_depth_gt'])[None,...].astype(np.float32)
-            ref_depths_gt = [np.load(t)[None,...].astype(np.float32) for t in sample['others']['ref_depths_gt']]
+            tgt_depth_gt = np.load(sample['others']['tgt_depth_gt'])[None,...,0].astype(np.float32)
+            ref_depths_gt = [np.load(t)[None,...:,0].astype(np.float32) for t in sample['others']['ref_depths_gt']]
 
             # 深度图是 [0,100]mm 因此归一化
             others['tgt_depth_gt'] = tgt_depth_gt/100
