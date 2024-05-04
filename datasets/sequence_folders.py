@@ -142,13 +142,12 @@ class SequenceFolder(data.Dataset):
         if sample['others']['tgt_depth_gt'] is not None:            
             # compute oflow
             tgt_depth_gt = np.load(sample['others']['tgt_depth_gt'])[None,...,0].astype(np.float32)
-            ref_depths_gt = [np.load(t)[None,...:,0].astype(np.float32) for t in sample['others']['ref_depths_gt']]
+            ref_depths_gt = [np.load(t)[None,...,0].astype(np.float32) for t in sample['others']['ref_depths_gt']]
 
             # 深度图是 [0,100]mm 因此归一化
             others['tgt_depth_gt'] = tgt_depth_gt/100
             others['ref_depths_gt'] = [t/100 for t in ref_depths_gt]
             
-            tgt_depth_gt = tgt_depth_gt[:,:,:,0]
             _,h,w = tgt_depth_gt.shape
             oflows = []
             K, K_inv = sample['intrinsics'], np.linalg.inv(sample['intrinsics'])

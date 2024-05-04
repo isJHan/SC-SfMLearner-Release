@@ -405,8 +405,8 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
             return torch.mean(torch.mean(torch.mean(tensor,axis=-1,keepdim=True),axis=-2,keepdim=True),axis=-3,keepdim=True)
         
         mean_diff = meanOnB(tgt_depth_gt) / meanOnB(tgt_depth[0])
-        print("tgt_depth_gt.shape is ", tgt_depth_gt.shape)
-        print("tgt_depth[0].shape is ", tgt_depth[0].shape)
+        # print("tgt_depth_gt.shape is ", tgt_depth_gt.shape)
+        # print("tgt_depth[0].shape is ", tgt_depth[0].shape)
         depth_L1 = abs( tgt_depth_gt - (tgt_depth[0]*mean_diff) ).mean()
         depth_absrel = abs( tgt_depth_gt - (tgt_depth[0]*mean_diff)/(tgt_depth_gt+1e-3) ).mean()
         depth_rmse = torch.pow( torch.pow(tgt_depth_gt - (tgt_depth[0]*mean_diff), 2).mean(), 0.5 )
