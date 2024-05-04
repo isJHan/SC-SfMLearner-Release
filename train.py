@@ -335,7 +335,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         ref_imgs = [img.to(device) for img in ref_imgs]
         intrinsics = intrinsics.to(device)
         
-        tgt_disp = others['tgt_depth'].to(device)
+        # tgt_disp = others['tgt_depth'].to(device)
         ref_disps = [d.to(device) for d in others['ref_depths']]
 
         # compute output
@@ -344,7 +344,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
         # tgt_depth, ref_depths = compute_depth_withRes(disp_net, tgt_img, ref_imgs, tgt_disp,ref_disps, epoch)
         # NOTE load disp from gt
         tgt_depth_gt = others['tgt_depth_gt'].to(device)*100
-        ref_depths_gt = [d.to(device)*100 for d in others['ref_depths_gt']]
+        # ref_depths_gt = [d.to(device)*100 for d in others['ref_depths_gt']]
         # ! simcol
         # tgt_depth_gt = others['tgt_depth_gt'].to(device)*200
         # ref_depths_gt = [d.to(device)*200 for d in others['ref_depths_gt']]
@@ -414,7 +414,7 @@ def train(args, train_loader, disp_net, pose_net, optimizer, epoch_size, logger,
             train_writer.add_scalar('loss/photometric_error', loss_1.item(), n_iter)
             train_writer.add_scalar('loss/disparity_smoothness_loss', loss_2.item(), n_iter)
             train_writer.add_scalar('loss/geometry_consistency_loss', loss_3.item(), n_iter)
-            train_writer.add_scalar('loss/loss_6', loss_6.item(), n_iter)
+            # train_writer.add_scalar('loss/loss_6', loss_6.item(), n_iter)
             # train_writer.add_scalar('loss/loss_6_aux', loss_6_aux.item(), n_iter)
             # train_writer.add_scalar('loss/reprojection_loss', loss_reproj.item(), n_iter)
             # train_writer.add_scalar('loss/pose_loss', loss_4.item(), n_iter)
